@@ -1,0 +1,129 @@
+Placeholder_0:
+  address: 0x0
+  end_address: 0xc000
+  region: flash_primary
+  size: 0xc000
+
+mcuboot:
+  address: 0xc000
+  end_address: 0x1bb00
+  placement:
+    align:
+      end: 0x1000
+    before:
+    - mcuboot_primary
+  region: flash_primary
+  size: 0xfb00
+
+EMPTY_0:
+  address: 0x1bb00
+  end_address: 0x1c000
+  placement:
+    after:
+    - mcuboot
+  region: flash_primary
+  size: 0x500
+
+mcuboot_primary:
+  address: 0x1c000
+  end_address: 0x80000
+  orig_span: &id001
+  - mcuboot_pad
+  - app
+  region: flash_primary
+  sharers: 0x1
+  size: 0x64000
+  span: *id001
+
+mcuboot_pad:
+  address: 0x1c000
+  end_address: 0x1c800
+  placement:
+    before:
+    - mcuboot_primary_app
+  region: flash_primary
+  size: 0x800
+
+mcuboot_primary_app:
+  address: 0x1c800
+  end_address: 0x80000
+  orig_span: &id002
+  - app
+  region: flash_primary
+  size: 0x63800
+  span: *id002
+
+app:
+  address: 0x1c800
+  end_address: 0x80000
+  region: flash_primary
+  size: 0x63800
+
+zboss_nvram:
+  address: 0x80000
+  end_address: 0x88000
+  placement:
+    after:
+    - app
+    align:
+      start: 0x1000
+  region: flash_primary
+  size: 0x8000
+
+zboss_product_config:
+  address: 0x88000
+  end_address: 0x89000
+  placement:
+    after:
+    - zboss_nvram
+  region: flash_primary
+  size: 0x1000
+
+Placeholder_1:
+  address: 0x89000
+  end_address: 0x17d000
+  region: flash_primary
+  size: 0xf4000
+
+sram_primary:
+  address: 0x20000000
+  end_address: 0x20040000
+  region: sram_primary
+  size: 0x40000
+
+dummy_0:
+  address: 0x0
+  end_address: 0xcb000
+  region: external_flash
+  size: 0xcb000
+
+mcuboot_secondary:
+  address: 0xcb000
+  end_address: 0x12f000
+  orig_span: &id003
+  - mcuboot_secondary_pad
+  - mcuboot_secondary_app
+  region: external_flash
+  size: 0x64000
+  span: *id003
+mcuboot_secondary_pad:
+  region: external_flash
+  address: 0xcb000
+  end_address: 0xcb800
+  size: 0x800
+mcuboot_secondary_app:
+  region: external_flash
+  address: 0xcb800
+  end_address: 0x12f000
+  size: 0x63800
+dummy_1:
+  address: 0x12f000
+  end_address: 0x7ff000
+  region: external_flash
+  size: 0x6d0000
+
+external_flash:
+  address: 0x7ff000
+  size: 0x1000
+  device: MX25R64
+  region: external_flash

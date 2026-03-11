@@ -31,6 +31,11 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/dfu/mcuboot.h>
 
+#include <zephyr/storage/flash_map.h>
+
+#define EXT_FLASH_PARTITION     external_flash
+#define EXT_FLASH_PARTITION_ID  FIXED_PARTITION_ID(EXT_FLASH_PARTITION)
+
 /* LED indicating OTA Client Activity. */
 #define OTA_ACTIVITY_LED          DK_LED2
 #endif /* CONFIG_ZIGBEE_FOTA */
@@ -124,6 +129,7 @@ struct buttons_context {
 	uint32_t state;
 	atomic_t long_poll;
 	struct k_timer alarm;
+	struct k_timer btn3_long_press_timer;
 };
 
 struct zb_device_ctx {
@@ -202,6 +208,8 @@ ZBOSS_DECLARE_DEVICE_CTX_2_EP(dimmer_switch_ctx,
 
 /* Forward declarations. */
 static void light_switch_button_handler(struct k_timer *timer);
+static void btn3_long_press_handler(struct k_timer *timer);
+static void btn3_long_press_notify(zb_bufid_t bufid);
 static void find_light_bulb_alarm(struct k_timer *timer);
 static void find_light_bulb(zb_bufid_t bufid);
 static void light_switch_send_on_off(zb_bufid_t bufid, zb_uint16_t on_off);
@@ -240,6 +248,81 @@ static void start_identifying(zb_bufid_t bufid)
 	}
 }
 
+/**@brief Notify application about Button 3 long press.
+ *
+ * Called in application thread context (non-interrupt).
+ *
+ * @param[in]   bufid  Unused parameter, required by ZBOSS scheduler API.
+ */
+#include <zephyr/sys/reboot.h>
+
+static void btn3_long_press_notify(zb_bufid_t bufid)
+{
+	ZVUNUSED(bufid);
+
+	LOG_INF("Starting switching to Matter......");
+	int rc;
+	const struct flash_area *pfa;
+	uint8_t write_buf[16] = {0xaa, 0x02, 0x03, 0x04,
+							 0x05, 0x06, 0x07, 0x08,
+							 0x09, 0x0A, 0x0B, 0x0C,
+							 0x0D, 0x0E, 0x0F, 0x10};
+	uint8_t read_buf[16] = {0};
+
+	rc = flash_area_open(EXT_FLASH_PARTITION_ID, &pfa);
+	if (rc < 0)
+	{
+		printk("FAIL: unable to find flash area %u: %d\n",
+			   EXT_FLASH_PARTITION_ID, rc);
+		return ;
+	}
+
+	rc = flash_area_read(pfa, 0, read_buf, sizeof(read_buf));
+	if (rc < 0)
+	{
+		printk("FAIL: flash read error: %d\n", rc);
+		flash_area_close(pfa);
+		return ;
+	}
+
+	rc = flash_area_erase(pfa, 0, pfa->fa_size);
+	if (rc < 0)
+	{
+		printk("FAIL: flash erase error: %d\n", rc);
+		flash_area_close(pfa);
+		return 1;
+	}
+
+	rc = flash_area_write(pfa, 0, write_buf, sizeof(write_buf));
+	if (rc < 0)
+	{
+		printk("FAIL: flash write error: %d\n", rc);
+		flash_area_close(pfa);
+		return 1;
+	}
+
+	/* 关闭分区 */
+	flash_area_close(pfa);
+
+	// 冷复位（完全复位）
+	sys_reboot(SYS_REBOOT_COLD);
+}
+
+/**@brief Callback for Button 3 (SLEEPY) long press timer.
+ *
+ * Called after button has been pressed for 10 seconds.
+ * Executes in interrupt context - schedule notification to app thread.
+ *
+ * @param[in]   timer  Pointer to the timer structure.
+ */
+static void btn3_long_press_handler(struct k_timer *timer)
+{
+	ZVUNUSED(timer);
+
+	/* Schedule the notification to run in application thread context */
+	ZB_SCHEDULE_APP_CALLBACK(btn3_long_press_notify, 0);
+}
+
 /**@brief Callback for button events.
  *
  * @param[in]   button_state  Bitmask containing buttons state.
@@ -251,6 +334,25 @@ static void button_handler(uint32_t button_state, uint32_t has_changed)
 	zb_uint16_t cmd_id;
 	zb_ret_t zb_err_code;
 
+	switch (has_changed)
+	{
+	case BUTTON_SLEEPY:
+		if (BUTTON_SLEEPY & button_state)
+		{
+			/* Button pressed - start 10 second timer */
+			LOG_INF("Button 3 (SLEEPY) pressed");
+			k_timer_start(&buttons_ctx.btn3_long_press_timer, K_SECONDS(5), K_NO_WAIT);
+		}
+		else
+		{
+			/* Button released - stop timer */
+			LOG_INF("Button 3 (SLEEPY) released");
+			k_timer_stop(&buttons_ctx.btn3_long_press_timer);
+		}
+		break;
+	default:
+		break;
+	}
 	/* Inform default signal handler about user input at the device. */
 	user_input_indicate();
 
@@ -341,6 +443,7 @@ static void configure_gpio(void)
 static void alarm_timers_init(void)
 {
 	k_timer_init(&buttons_ctx.alarm, light_switch_button_handler, NULL);
+	k_timer_init(&buttons_ctx.btn3_long_press_timer, btn3_long_press_handler, NULL);
 	k_timer_init(&bulb_ctx.find_alarm, find_light_bulb_alarm, NULL);
 }
 
