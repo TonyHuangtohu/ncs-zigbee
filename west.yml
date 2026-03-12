@@ -5,10 +5,12 @@ manifest:
   remotes:
     - name: ncs
       url-base: https://github.com/nrfconnect
+    - name: fork_nrf
+      url-base: https://github.com/TonyHuangtohu/
 
   projects:
     - name: nrf
-      remote: ncs
-      repo-path: sdk-nrf
-      revision: v2.9.2
+      remote: fork_nrf
+      repo-path: sdk-nrf/tree/haiman_zigbee_matter
+      revision: 70f7c390cb15c880db984bea033dc454ff1efbea
       import: true
