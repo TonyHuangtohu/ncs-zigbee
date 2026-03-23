@@ -290,7 +290,7 @@ static void btn3_long_press_notify(zb_bufid_t bufid)
 	{
 		printk("FAIL: flash erase error: %d\n", rc);
 		flash_area_close(pfa);
-		return 1;
+		return;
 	}
 
 	rc = flash_area_write(pfa, 0, write_buf, sizeof(write_buf));
@@ -298,7 +298,7 @@ static void btn3_long_press_notify(zb_bufid_t bufid)
 	{
 		printk("FAIL: flash write error: %d\n", rc);
 		flash_area_close(pfa);
-		return 1;
+		return;
 	}
 
 	/* 关闭分区 */
@@ -683,11 +683,12 @@ static void ota_evt_handler(const struct zigbee_fota_evt *evt)
 {
 	switch (evt->id) {
 	case ZIGBEE_FOTA_EVT_PROGRESS:
+		LOG_INF("OTA transfer progress: %u%%", evt->dl.progress);
 		led_set(OTA_ACTIVITY_LED, evt->dl.progress % 2);
 		break;
 
 	case ZIGBEE_FOTA_EVT_FINISHED:
-		LOG_INF("Reboot application.");
+		LOG_INF("OTA transfer finished. Reboot application.");
 		/* Power on unused sections of RAM to allow MCUboot to use it. */
 		if (IS_ENABLED(CONFIG_RAM_POWER_DOWN_LIBRARY)) {
 			power_up_unused_ram();
@@ -716,6 +717,7 @@ static void zcl_device_cb(zb_bufid_t bufid)
 		ZB_BUF_GET_PARAM(bufid, zb_zcl_device_callback_param_t);
 
 	if (device_cb_param->device_cb_id == ZB_ZCL_OTA_UPGRADE_VALUE_CB_ID) {
+		LOG_INF("Received Zigbee OTA Upgrade cluster callback.");
 		zigbee_fota_zcl_cb(bufid);
 	} else {
 		device_cb_param->status = RET_NOT_IMPLEMENTED;
@@ -928,7 +930,9 @@ void set_tx_power(void)
 int main(void)
 {
 	LOG_INF("Starting Zigbee R23 Light Switch example");
-
+	#ifdef CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION
+	LOG_INF("CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION: %s", CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION);
+	#endif
 	/* Initialize. */
 	configure_gpio();
 	alarm_timers_init();
@@ -961,6 +965,13 @@ int main(void)
 
 #ifdef CONFIG_ZIGBEE_FOTA
 	/* Initialize Zigbee FOTA download service. */
+	LOG_INF("Initializing Zigbee FOTA client (ep=%d, hw=%d, mfr=0x%04x, image=0x%04x, discovery=%d h, query=%d min)",
+		CONFIG_ZIGBEE_FOTA_ENDPOINT,
+		CONFIG_ZIGBEE_FOTA_HW_VERSION,
+		CONFIG_ZIGBEE_FOTA_MANUFACTURER_ID,
+		CONFIG_ZIGBEE_FOTA_IMAGE_TYPE,
+		CONFIG_ZIGBEE_FOTA_SERVER_DISOVERY_INTERVAL_HRS,
+		CONFIG_ZIGBEE_FOTA_IMAGE_QUERY_INTERVAL_MIN);
 	zigbee_fota_init(ota_evt_handler);
 
 	/* Mark the current firmware as valid. */
